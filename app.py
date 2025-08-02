@@ -1,27 +1,22 @@
 import streamlit as st
 import joblib
 import string
-import os
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 import nltk
+from datetime import datetime
+import base64
 
-# 📥 Download stopwords only if not already present
-nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
-nltk.data.path.append(nltk_data_path)
+nltk.download('stopwords')
 
-try:
-    stop_words = set(stopwords.words('english'))
-except LookupError:
-    nltk.download('stopwords', download_dir=nltk_data_path)
-    stop_words = set(stopwords.words('english'))
-
-# 🧠 Load model and vectorizer
+# Load model and vectorizer
 model = joblib.load("spam_model.pkl")
 vectorizer = joblib.load("tfidf_vectorizer.pkl")
+
+# Preprocessing
+stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
 
-# 🔍 Preprocessing function
 def preprocess(text):
     text = text.lower()
     text = ''.join(char for char in text if char not in string.punctuation)
@@ -29,61 +24,128 @@ def preprocess(text):
     filtered = [stemmer.stem(w) for w in words if w not in stop_words]
     return ' '.join(filtered)
 
-# 🌐 Streamlit UI setup
-st.set_page_config(page_title="📧 Email Spam Classifier", layout="centered")
-st.title("📧 Email Spam Classifier")
+# Page config
+st.set_page_config(page_title="📧 Spam Classifier", layout="wide")
 
+# Session state
 if "history" not in st.session_state:
     st.session_state.history = []
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+if "sound_trigger" not in st.session_state:
+    st.session_state.sound_trigger = 0
 
-email_text = st.text_area("✉️ Enter email content here:", height=200)
-threshold = st.slider("🔧 Spam Detection Threshold", 0.0, 1.0, 0.5, 0.01)
+# Toggle dark mode
+st.sidebar.markdown("## ⚙️ Settings")
+dark_toggle = st.sidebar.checkbox("🌙 Dark Mode", value=st.session_state.dark_mode)
 
-col1, col2 = st.columns([1, 1])
+if dark_toggle != st.session_state.dark_mode:
+    st.session_state.dark_mode = dark_toggle
+    st.rerun()
+
+# Apply dark or light theme manually via custom CSS
+custom_css = """
+<style>
+body {
+    background-color: %s;
+    color: %s;
+}
+textarea, .stTextInput > div > div > input {
+    background-color: %s !important;
+    color: %s !important;
+    border: 1px solid %s !important;
+}
+.stButton button {
+    background-color: #5865F2;
+    color: white;
+    border-radius: 8px;
+    padding: 0.5em 1em;
+}
+.chat-bubble {
+    margin: 10px;
+    padding: 10px 15px;
+    border-radius: 20px;
+    max-width: 70%%;
+    word-wrap: break-word;
+}
+.user-bubble {
+    background-color: %s;
+    margin-left: auto;
+    text-align: right;
+}
+.bot-bubble {
+    background-color: %s;
+    margin-right: auto;
+    text-align: left;
+    border-left: 4px solid #00FFB3;
+}
+</style>
+""" % (
+    ("#0e1117", "#ffffff", "#1e1e2f", "#ffffff", "#444444", "#5865F2", "#2b2d42") if st.session_state.dark_mode else
+    ("#e6f0ff", "#000000", "#ffffff", "#000000", "#cccccc", "#d0e0ff", "#ffffff")
+)
+st.markdown(custom_css, unsafe_allow_html=True)
+
+# Title
+st.markdown("<h1 style='text-align: center;'>💬 Spam Classifier (Discord UI)</h1>", unsafe_allow_html=True)
+
+email_text = st.text_area("✉️ Enter your email here:", height=150)
+col1, col2, col3 = st.columns([1, 1, 1])
+
 with col1:
-    classify = st.button("🔍 Classify")
+    classify = st.button("🚀 Classify")
 with col2:
     reset = st.button("🔄 Reset")
+with col3:
+    export = st.button("📁 Export Chat")
 
-# 🧪 Classify Email
-if classify:
-    if not email_text.strip():
-        st.warning("Please enter an email message.")
-    else:
-        cleaned = preprocess(email_text)
-        vec = vectorizer.transform([cleaned])
-        proba = model.predict_proba(vec)[0][1]  # Probability it's spam
-        result = int(proba > threshold)
-        label = "⚠️ SPAM" if result == 1 else "✅ NOT SPAM"
+# Sound (ding) on output
+sound_file = "https://www.myinstants.com/media/sounds/ding-sound-effect_2.mp3"
+if st.session_state.sound_trigger:
+    st.markdown(f"""
+    <audio autoplay>
+        <source src="{sound_file}" type="audio/mpeg">
+    </audio>
+    """, unsafe_allow_html=True)
+    st.session_state.sound_trigger = 0
 
-        st.markdown(f"### Prediction: {label}")
-        st.progress(int(proba * 100))
-        st.write(f"🧪 Spam Probability: `{proba:.2f}` | Threshold: `{threshold:.2f}`")
-        st.text_area("🔍 Preprocessed Text", cleaned, height=100)
-        st.session_state.history.append((email_text, label, f"{proba:.2f}"))
+if classify and email_text.strip():
+    cleaned = preprocess(email_text)
+    vec = vectorizer.transform([cleaned])
+    result = model.predict(vec)[0]
+    proba = model.predict_proba(vec)[0][1]
+    label = "⚠️ SPAM" if result == 1 else "✅ NOT SPAM"
 
-# 🔁 Reset history
+    st.session_state.history.append({
+        "text": email_text,
+        "label": label,
+        "proba": f"{proba:.2f}",
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
+
+    st.session_state.sound_trigger = 1
+    st.rerun()
+
 if reset:
     st.session_state.history = []
     st.rerun()
 
-# 🕓 Conversation History
+if export and st.session_state.history:
+    history_txt = "\n".join([f"[{h['time']}] You: {h['text']}\nBot: {h['label']} ({h['proba']})" for h in st.session_state.history])
+    b64 = base64.b64encode(history_txt.encode()).decode()
+    href = f'<a href="data:file/txt;base64,{b64}" download="chat_history.txt">📥 Download Chat History</a>'
+    st.markdown(href, unsafe_allow_html=True)
+
+# Scrollable history
 if st.session_state.history:
     st.markdown("---")
-    st.markdown("### 🕓 Conversation History")
-    for i, (msg, label, prob) in enumerate(reversed(st.session_state.history), 1):
-        with st.expander(f"{i}. {label} (Confidence: {prob})"):
-            st.markdown(msg)
-
-# 🧪 Optional test example
-if st.button("🧪 Run Spam Test Example"):
-    sample = "Congratulations! You've won a free iPhone. Click here to claim your prize."
-    cleaned = preprocess(sample)
-    vec = vectorizer.transform([cleaned])
-    proba = model.predict_proba(vec)[0][1]
-    result = int(proba > threshold)
-    label = "⚠️ SPAM" if result == 1 else "✅ NOT SPAM"
-
-    st.markdown(f"**Test Result:** {label} (Confidence: `{proba:.2f}`)")
-    st.text_area("Sample Email", sample)
-    st.text_area("Cleaned Text", cleaned)
+    st.markdown("### 🕓 Chat History")
+    for item in st.session_state.history[-10:]:
+        st.markdown(f"""
+        <div class="chat-bubble user-bubble">
+            👤 {item['text']}
+        </div>
+        <div class="chat-bubble bot-bubble">
+            🤖 {item['label']}<br><small>Confidence: {item['proba']}</small>
+        </div>
+        """, unsafe_allow_html=True)
