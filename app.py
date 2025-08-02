@@ -87,7 +87,7 @@ textarea, .stTextInput > div > div > input {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # Title
-st.markdown("<h1 style='text-align: center;'>💬 Spam Classifier (Discord UI)</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>💬 Spam Classifier-MAK </h1>", unsafe_allow_html=True)
 
 email_text = st.text_area("✉️ Enter your email here:", height=150)
 col1, col2, col3 = st.columns([1, 1, 1])
