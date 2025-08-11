@@ -112,7 +112,7 @@ if st.session_state.sound_trigger:
 if classify and email_text.strip():
     cleaned = preprocess(email_text)
     vec = vectorizer.transform([cleaned])
-    threshold = 0.32  # more sensitive to spam
+    threshold = 0.5  # more sensitive to spam
     proba = model.predict_proba(vec)[0][1]
     result = 1 if proba >= threshold else 0
     label = "⚠️ SPAM" if result == 1 else "✅ NOT SPAM"
@@ -151,4 +151,5 @@ if st.session_state.history:
             🤖 {item['label']}<br><small>Confidence: {item['proba']}</small>
         </div>
         """, unsafe_allow_html=True)
+
 
